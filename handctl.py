@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Hand-tracked input for Hyprland.
 
-Three modes, toggle by holding a closed fist on either hand (or `m`):
+Two modes, toggle by holding a closed fist on either hand (or `m`):
   - mouse:     cursor follows your left hand; pinch = hold left button
   - window:    left pinch grabs the active window and drags it;
                left double-tap toggles floating;
                BOTH hands pinched = two-handed resize (pull apart / push together)
-  - workspace: left pinch + sweep left/right cycles workspaces
 
 ESC quits.
 """
@@ -43,11 +42,7 @@ FIST_CURL_RATIO = 0.5
 # of palm size. Loose enough that a pinching index still reads as extended.
 FINGER_EXTEND_RATIO = 0.65
 
-MODES = ["mouse", "window", "workspace"]
-
-# Horizontal hand displacement (normalized 0..1) during a pinch that
-# triggers one workspace step in workspace mode.
-SWIPE_THRESHOLD = 0.15
+MODES = ["mouse", "window"]
 
 # Window mode: a pinch shorter than TAP_MAX counts as a tap (no drag).
 # Two taps inside DOUBLE_TAP_WINDOW toggle floating on the active window.
@@ -237,7 +232,6 @@ def main():
     mode_idx = 0
     fist_start = None           # time fist closed (either hand), or None
     fist_consumed = False       # already triggered switch during this fist
-    swipe_anchor_x = None       # L[sx] at last pinch-start (workspace mode)
     win_w, win_h = 800, 600     # window size cached on grab (window mode drag)
     last_tap_time = 0.0         # release time of last short tap (window mode)
     # Left-hand pinch overlapped with a right-hand pinch at some point.
@@ -482,21 +476,6 @@ def main():
                         L["pinch_start_time"] = None
                         left_pinch_paired = False
 
-            elif mode == "workspace":
-                # Left hand pinch + horizontal sweep.
-                if L["pinched"] and not L["was_pinched"]:
-                    swipe_anchor_x = L["sx"]
-                elif not L["pinched"]:
-                    swipe_anchor_x = None
-                if L["pinched"] and L["sx"] is not None and swipe_anchor_x is not None:
-                    dxs = L["sx"] - swipe_anchor_x
-                    if dxs > SWIPE_THRESHOLD:
-                        hypr_dispatch("workspace", "+1")
-                        swipe_anchor_x = L["sx"]
-                    elif dxs < -SWIPE_THRESHOLD:
-                        hypr_dispatch("workspace", "-1")
-                        swipe_anchor_x = L["sx"]
-
             # HUD (toggle with 'h').
             if show_hud:
                 fh, fw = frame.shape[:2]
@@ -550,18 +529,6 @@ def main():
                     lx, ly = int(L["sx"] * fw), int(L["sy"] * fh)
                     rx, ry = int(R["sx"] * fw), int(R["sy"] * fh)
                     cv2.line(frame, (lx, ly), (rx, ry), (0, 200, 255), 2)
-
-                # Workspace mode: swipe progress indicator (only while pinched).
-                if (mode == "workspace" and L["pinched"]
-                        and swipe_anchor_x is not None and L["sx"] is not None):
-                    dxs = L["sx"] - swipe_anchor_x
-                    frac = max(-1.0, min(1.0, dxs / SWIPE_THRESHOLD))
-                    cx0 = fw // 2
-                    cy0 = 70
-                    half = int(0.25 * fw)
-                    cv2.line(frame, (cx0 - half, cy0), (cx0 + half, cy0), (80, 80, 80), 1)
-                    cv2.line(frame, (cx0, cy0 - 6), (cx0, cy0 + 6), (80, 80, 80), 1)
-                    cv2.circle(frame, (cx0 + int(frac * half), cy0), 6, (0, 200, 255), -1)
 
                 # Fist hold progress bar.
                 if any_fist and fist_start is not None and not fist_consumed:
